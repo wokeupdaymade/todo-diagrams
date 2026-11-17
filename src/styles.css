@@ -760,6 +760,20 @@ kbd {
 @keyframes flash { 0%, 30% { background: color-mix(in srgb, var(--accent) 30%, transparent); } 100% { background: transparent; } }
 .row-guides { position: absolute; left: 0; top: 0; bottom: 0; pointer-events: none; }
 .guide { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--border); }
+.row-grip { width: 12px; height: 20px; margin-left: -10px; margin-right: -4px; display: grid; place-items: center; color: var(--text-3); cursor: grab; opacity: 0; flex-shrink: 0; }
+.outline-row:hover .row-grip { opacity: 1; }
+.outline-row[data-drop='before']::before, .outline-row[data-drop='after']::after {
+  content: '';
+  position: absolute;
+  left: 30px;
+  right: 8px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+.outline-row[data-drop='before']::before { top: -1px; }
+.outline-row[data-drop='after']::after { bottom: -1px; }
+.outline-row[data-drop='inside'] { box-shadow: inset 0 0 0 2px var(--accent); }
 .row-chevron { width: 18px; height: 20px; display: grid; place-items: center; color: var(--text-3); border-radius: 4px; flex-shrink: 0; }
 .row-chevron:hover { background: var(--hover); color: var(--text); }
 .row-color { width: 3px; align-self: stretch; border-radius: 2px; background: var(--c); margin: 1px -2px 1px -3px; flex-shrink: 0; }

@@ -15,6 +15,7 @@
     "@dagrejs/dagre": "1.1.4",
     "@xyflow/react": "12.10.0",
     "dompurify": "3.2.6",
+    "html-to-image": "1.11.11",
     "idb-keyval": "6.2.1",
     "immer": "10.1.1",
     "lucide-react": "0.511.0",

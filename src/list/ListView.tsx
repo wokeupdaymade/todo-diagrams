@@ -10,6 +10,7 @@ import {
   Diamond,
   EyeOff,
   Flame,
+  GripVertical,
   ListTree,
   Lock,
   MoreHorizontal,
@@ -24,7 +25,8 @@ import {
   CheckCheck,
 } from 'lucide-react';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { upstreamOf, type Analysis, type TaskInfo } from '../model/engine';
+import { descendantsOf, upstreamOf, type Analysis, type TaskInfo } from '../model/engine';
+import { findFreeSpot } from '../model/geometry';
 import { titleOf } from '../model/rules';
 import type { Board, FrameItem, ID, NoteItem, TaskItem } from '../model/types';
 import { isTask } from '../model/types';
@@ -370,6 +372,55 @@ function SectionProgress({ analysis, roots }: { analysis: Analysis; roots: ID[] 
   );
 }
 
+/* ---------------- drag & drop in the outline ---------------- */
+
+type DropZone = 'before' | 'after' | 'inside';
+let draggingId: ID | null = null;
+
+function zoneOf(e: React.DragEvent<HTMLElement>): DropZone {
+  const r = e.currentTarget.getBoundingClientRect();
+  const y = (e.clientY - r.top) / r.height;
+  return y < 0.3 ? 'before' : y > 0.7 ? 'after' : 'inside';
+}
+
+/** Move a task (with its subtree) in the outline: reorder among siblings, re-parent, or nest. */
+function dropTask(dragId: ID, targetId: ID, zone: DropZone) {
+  if (dragId === targetId) return;
+  const st = useStore.getState();
+  const a = st.analysis;
+  const b = st.board();
+  const target = b.items[targetId] as TaskItem;
+  const dragged = b.items[dragId] as TaskItem;
+  if (!target || !dragged) return;
+  if (descendantsOf(a, dragId).includes(targetId)) {
+    st.toast('A task can’t be moved into its own subtasks.', 'error');
+    return;
+  }
+  if (zone === 'inside') {
+    if (target.milestone) return st.toast('Milestones can’t have subtasks.', 'error');
+    st.setParent(dragId, targetId);
+    return;
+  }
+  const parent = a.tasks.get(targetId)!.parentId;
+  const sibs = (parent ? a.tasks.get(parent)!.childIds : a.roots).filter((id) => id !== dragId);
+  const index = sibs.indexOf(targetId) + (zone === 'after' ? 1 : 0);
+  st.beginGesture();
+  if (!parent && target.frameId !== dragged.frameId) {
+    // moving to another area's section: bring the branch over on the canvas, below the target
+    const branch = [dragId, ...descendantsOf(a, dragId)];
+    let bottom = target.y + target.h;
+    for (const d of descendantsOf(a, targetId)) bottom = Math.max(bottom, b.items[d].y + b.items[d].h);
+    const spot = findFreeSpot(b, { x: target.x, y: bottom + 24, w: dragged.w, h: dragged.h }, new Set(branch));
+    const dx = spot.x - dragged.x;
+    const dy = spot.y - dragged.y;
+    const pos: Record<ID, { x: number; y: number }> = {};
+    for (const id of branch) pos[id] = { x: b.items[id].x + dx, y: b.items[id].y + dy };
+    st.moveItems(pos);
+  }
+  st.setParent(dragId, parent, index);
+  st.endGesture();
+}
+
 const OutlineRow = memo(function OutlineRow({
   id,
   depth,
@@ -466,6 +517,20 @@ const OutlineRow = memo(function OutlineRow({
       data-row={id}
       className={`outline-row st-${info.state} ${selected ? 'selected' : ''} ${t.milestone ? 'milestone' : ''} ${info.composite ? 'composite' : ''}`}
       style={{ paddingLeft: 8 + depth * 22 }}
+      onDragOver={(e) => {
+        if (!draggingId || draggingId === id) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        e.currentTarget.dataset.drop = zoneOf(e);
+      }}
+      onDragLeave={(e) => delete e.currentTarget.dataset.drop}
+      onDrop={(e) => {
+        e.preventDefault();
+        const zone = zoneOf(e);
+        delete e.currentTarget.dataset.drop;
+        if (draggingId) dropTask(draggingId, id, zone);
+        draggingId = null;
+      }}
       onClick={(e) => {
         const st = useStore.getState();
         if (e.shiftKey || e.metaKey || e.ctrlKey) st.toggleSelect(id);
@@ -476,6 +541,21 @@ const OutlineRow = memo(function OutlineRow({
         {Array.from({ length: depth }).map((_, i) => (
           <span key={i} className="guide" style={{ left: 8 + i * 22 + 9 }} />
         ))}
+      </span>
+      <span
+        className="row-grip"
+        draggable
+        title="Drag to move · drop on the middle of a row to nest"
+        onDragStart={(e) => {
+          draggingId = id;
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', t.title);
+          const row = (e.currentTarget as HTMLElement).closest('.outline-row');
+          if (row) e.dataTransfer.setDragImage(row, 20, 14);
+        }}
+        onDragEnd={() => (draggingId = null)}
+      >
+        <GripVertical size={13} />
       </span>
       <button className={`row-chevron ${info.composite ? '' : 'invisible'}`} onClick={(e) => (e.stopPropagation(), toggle(id))}>
         {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}

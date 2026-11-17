@@ -1,5 +1,8 @@
+import { getNodesBounds, getViewportForBounds, useReactFlow } from '@xyflow/react';
+import { toPng } from 'html-to-image';
 import {
   CheckSquare,
+  ImageDown,
   Crosshair,
   Diamond,
   Eye,
@@ -44,8 +47,38 @@ export function CanvasToolbar({
   const focusMode = useStore((s) => s.ui.focusMode);
   const selection = useStore((s) => s.ui.selection);
   const st = useStore.getState;
+  const rf = useReactFlow();
 
   const at = () => placePoint();
+
+  const exportPng = async () => {
+    const nodes = rf.getNodes();
+    if (!nodes.length) return st().toast('Nothing to export yet.', 'info');
+    const bounds = getNodesBounds(nodes);
+    const scale = Math.min(2, 4000 / Math.max(bounds.width, bounds.height));
+    const width = Math.round(bounds.width * scale + 80);
+    const height = Math.round(bounds.height * scale + 80);
+    const vp = getViewportForBounds(bounds, width, height, 0.05, 4, 0.03);
+    const el = document.querySelector<HTMLElement>('.react-flow__viewport');
+    if (!el) return;
+    const bg = getComputedStyle(document.documentElement).getPropertyValue('--canvas').trim() || '#ffffff';
+    try {
+      const url = await toPng(el, {
+        backgroundColor: bg,
+        width,
+        height,
+        pixelRatio: 1,
+        filter: (n) => !(n instanceof HTMLElement && (n.classList.contains('react-flow__handle') || n.classList.contains('react-flow__resize-control'))),
+        style: { width: `${width}px`, height: `${height}px`, transform: `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})` },
+      });
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${st().board().name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'board'}.png`;
+      a.click();
+    } catch (e) {
+      st().toast(`Export failed: ${(e as Error).message}`, 'error');
+    }
+  };
   const selTask = selection.length === 1 ? st().board().items[selection[0]] : null;
 
   return (
@@ -175,6 +208,8 @@ export function CanvasToolbar({
               <MenuItem label="Highlight critical path" active={showCritical} onClick={() => st().setUI({ showCritical: !showCritical })} />
               <MenuItem label="Mini-map" active={showMinimap} onClick={() => st().setUI({ showMinimap: !showMinimap })} />
               <MenuItem label="Snap to grid" active={snapToGrid} onClick={() => st().setUI({ snapToGrid: !snapToGrid })} />
+              <MenuSep />
+              <MenuItem icon={<ImageDown size={15} />} label="Export board as PNG" onClick={() => void exportPng()} />
             </>
           )}
         </Popover>
